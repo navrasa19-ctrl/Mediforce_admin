@@ -22,6 +22,9 @@ All paths below are relative to `VITE_API_BASE_URL`.
 | Review one document | PATCH | `/api/v1/admin/employees/:employeeId/compliance/documents/:documentId/review` |
 | Review documents in bulk | PATCH | `/api/v1/admin/employees/:employeeId/compliance/documents/review-bulk` |
 | Approve overall compliance | PATCH | `/api/v1/admin/employees/:employeeId/compliance/approve` |
+| Eligible employees for onboarding | GET | `/api/v1/admin/employees/onboarding-eligible` |
+| Active departments for registration | GET | `/api/v1/departments/registration` |
+| Active grades by department | GET | `/api/v1/grades/registration?departmentId=:departmentId` |
 | Complete onboarding | POST | `/api/v1/admin/employees/:userId/onboard` |
 | Stream/download document | GET | `/api/v1/employees/compliance/documents/:documentId` |
 

@@ -3,3 +3,21 @@
 @media(max-width:950px){.sidebar{transform:translateX(-100%);transition:transform .22s ease;box-shadow:none}.sidebar.open{transform:translateX(0);box-shadow:10px 0 40px #18352c20}.mobile-scrim{display:block;position:fixed;inset:0;background:#102c2a66;z-index:25}.main-area{margin-left:0}.menu-toggle,.close-mobile{display:inline-grid}.topbar{height:64px}.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.overview-grid{grid-template-columns:1fr 1fr}.page-heading h1{font-size:24px}.login-page{grid-template-columns:.85fr 1.15fr}.login-decoration{padding:30px 7%}.login-form-wrap{padding:30px}}
 @media(max-width:680px){.page-wrap{padding:23px 14px 28px}.topbar{padding:0 14px}.topbar-left{gap:8px}.topbar-actions{gap:10px}.secure-label{display:none}.topbar-avatar{padding-left:9px}.breadcrumbs{font-size:10px;gap:5px}.page-heading{align-items:flex-start;flex-direction:column;gap:14px;margin-bottom:20px}.page-heading h1{font-size:24px}.page-heading p{font-size:11px}.heading-action{width:100%;flex-wrap:wrap}.metric-grid{gap:10px}.metric-card{padding:13px}.metric-top{font-size:10px;align-items:flex-start}.metric-icon{width:31px;height:31px}.metric-value{font-size:25px;margin:12px 0 6px}.metric-bottom{font-size:9px;flex-wrap:wrap}.overview-grid{grid-template-columns:1fr;gap:12px}.activity-panel,.side-summary,.recent-panel{padding:16px}.snapshot-ring{width:130px;height:130px}.data-toolbar{align-items:stretch;flex-direction:column;padding:14px}.searchbox{width:100%}.tabs{overflow:auto;flex-wrap:nowrap}.tabs button{white-space:nowrap}.table-foot{padding:12px 14px}.row-actions{flex-wrap:wrap}.footer{padding:15px 14px;gap:10px;font-size:8px}.form-two{grid-template-columns:1fr;gap:0}.onboarding-layout{grid-template-columns:1fr}.onboarding-panel,.checklist-panel{padding:17px}.drawer-head{padding:20px 18px 16px}.drawer-scroll{padding:18px}.drawer-footer{padding:13px 18px;flex-wrap:wrap}.drawer-footer .btn{flex:1}.detail-summary{gap:7px;padding:11px}.detail-summary small{font-size:8px}.detail-summary b{font-size:10px}.document-card{gap:8px}.document-actions{flex-direction:column}.modal{padding:23px}.login-page{grid-template-columns:1fr}.login-decoration{display:none}.login-form-wrap{min-height:100vh;padding:24px}.mobile-brand{display:flex;align-items:center;gap:10px;margin-bottom:45px;color:#164a44;font-family:Manrope,sans-serif;font-size:15px}.mobile-brand .brand-mark{width:36px;height:36px}.login-form h2{font-size:23px}.login-form>.muted{margin-bottom:25px}.login-foot{margin-top:25px}.alert{margin:12px}.recent-panel .panel-title{gap:8px}.recent-panel .panel-title h3{font-size:13px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important}}
+
+/* Employee onboarding dynamic lookup controls */
+.lookup-label{position:relative}
+.lookup-control{position:relative;width:100%}
+.lookup-control>input{padding-right:34px!important;cursor:text}
+.lookup-control.is-disabled>input{background:#f5f7f6;color:#9aa4a2;cursor:not-allowed}
+.lookup-chevron{position:absolute;right:11px;top:50%;transform:translateY(-50%);color:#82908c;pointer-events:none}
+.lookup-menu{position:absolute;z-index:35;top:calc(100% + 5px);left:0;right:0;max-height:240px;overflow:auto;background:#fff;border:1px solid #dfe7e4;border-radius:9px;box-shadow:0 12px 28px #193b3217;padding:5px}
+.lookup-option{display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%;border:0;border-radius:6px;background:#fff;padding:10px;text-align:left;color:#304440;font-size:11px}
+.lookup-option:hover,.lookup-option.selected{background:#edf7f4;color:var(--teal)}
+.lookup-option span{font-weight:700}
+.lookup-option small{font-size:10px;color:#7e8b87}
+.lookup-message{padding:13px 10px;font-size:10px;line-height:1.5;color:#7e8b87}
+.lookup-error{display:block;color:#b91c1c;font-size:10px;font-weight:500;line-height:1.6;margin-top:5px}
+.lookup-help{display:block;color:#8b9694;font-size:10px;font-weight:500;line-height:1.5;margin-top:5px}
+.alert.success{background:#effaf2;color:#166534;border:1px solid #ccebd4}
+.alert.success>div{display:flex;flex-direction:column;gap:2px;flex:1}
+@media(max-width:680px){.lookup-menu{max-height:210px}}

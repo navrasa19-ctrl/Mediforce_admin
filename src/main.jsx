@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   Activity, AlertCircle, ArrowDownRight, ArrowRight, ArrowUpRight, BadgeCheck, Bell,
@@ -40,7 +40,13 @@ async function api(path, { token, method='GET', body, blob=false } = {}) {
   if (!response.ok) {
     if (response.status === 401) throw new Error('Your session may have expired. Please sign in again.');
     if (response.status === 403) throw new Error(data.message || 'You do not have permission to perform this action.');
-    throw new Error(data.message || `Request failed (${response.status}). Please retry.`);
+    const serverMessage = data.message || data.error || data.details;
+    // A 404 for a documented lookup usually means the configured backend is
+    // missing the deployed route (or VITE_API_BASE_URL points at the wrong service).
+    if (response.status === 404 && /route not found|cannot get|not found/i.test(String(serverMessage || ''))) {
+      throw new Error(`${serverMessage}. This API route is not available on the configured backend. Verify VITE_API_BASE_URL and deploy the backend revision that includes the onboarding-eligible lookup; the frontend cannot create a missing backend route.`);
+    }
+    throw new Error(serverMessage || `Request failed (${response.status}). Please retry.`);
   }
   return data;
 }
@@ -250,13 +256,118 @@ function ComplianceDrawer({item,onClose,reviewDoc,downloadDoc,onApprove,busy}) {
     <div className="drawer-callout"><AlertCircle size={17}/><span>Overall approval requires all required documents approved and bank details marked complete.</span></div></div><div className="drawer-footer"><button className="btn secondary" onClick={onClose}>Close</button><button className="btn primary" onClick={onApprove} disabled={busy}><CheckCheck size={16}/> Approve overall compliance</button></div></aside></div>;
 }
 
+function lookupData(result, label) {
+  // These lookup contracts explicitly return { success, message, data: [] }.
+  if (!result || !Array.isArray(result.data)) {
+    throw new Error(`${label} returned an unexpected response. Expected a data array; check the backend contract.`);
+  }
+  if (result.success === false) throw new Error(result.message || `Unable to load ${label.toLowerCase()}.`);
+  return result.data;
+}
+
+function SearchableLookup({label,placeholder,items,value,onChange,loading,error,onRetry,disabled=false,emptyMessage='No options available',searchPlaceholder='Search…',required=false}) {
+  const [query,setQuery]=useState('');
+  const [open,setOpen]=useState(false);
+  const selected=items.find(item=>item._id===value);
+  const filtered=items.filter(item=>`${item.fullName||item.name||''} ${item.email||''} ${item.code||''}`.toLowerCase().includes(query.toLowerCase()));
+  useEffect(()=>{ if(selected) setQuery(''); },[value]); 
+  return <label className="lookup-label">{label}
+    <div className={`lookup-control ${disabled?'is-disabled':''}`}>
+      <input
+        value={open?query:(selected?(selected.fullName||selected.name||'')+(selected.email?` · ${selected.email}`:''):query)}
+        onChange={e=>{setQuery(e.target.value);setOpen(true);if(value)onChange('');}}
+        onFocus={()=>{setQuery('');setOpen(true);}}
+        onBlur={()=>window.setTimeout(()=>setOpen(false),140)}
+        placeholder={loading?'Loading options…':error?'Lookup unavailable':placeholder}
+        disabled={disabled||loading||Boolean(error)}
+        autoComplete="off"
+        required={required&&!value}
+        aria-label={label}
+        aria-expanded={open}
+        role="combobox"
+      />
+      <ChevronDown size={16} className="lookup-chevron"/>
+      {open&&!disabled&&!loading&&!error&&<div className="lookup-menu" role="listbox">
+        {filtered.length===0?<div className="lookup-message">{items.length===0?emptyMessage:'No matching results'}</div>:filtered.map(item=><button type="button" className={`lookup-option ${item._id===value?'selected':''}`} key={item._id} onMouseDown={e=>e.preventDefault()} onClick={()=>{onChange(item._id);setQuery('');setOpen(false);}}>
+          <span>{item.fullName||item.name}</span>
+          {item.email&&<small>{item.email}</small>}
+          {item.code&&<small>{item.code}</small>}
+        </button>)}
+      </div>}
+    </div>
+    {error&&<span className="lookup-error">{error} <button type="button" className="text-btn" onClick={onRetry}>Retry</button></span>}
+    {!error&&!loading&&items.length===0&&<span className="lookup-help">{emptyMessage}</span>}
+  </label>;
+}
+
 function Onboarding({token,notify}) {
-  const [userId,setUserId]=useState('');const [departmentId,setDepartmentId]=useState('');const [gradeId,setGradeId]=useState('');const [type,setType]=useState('BANK');const [busy,setBusy]=useState(false);const [error,setError]=useState('');
-  async function submit(e){e.preventDefault();setBusy(true);setError('');try{await api(`/api/v1/admin/employees/${encodeURIComponent(userId.trim())}/onboard`,{token,method:'POST',body:{departmentId:departmentId.trim(),gradeId:gradeId.trim(),type}});notify('Employee onboarding completed.');setUserId('');setDepartmentId('');setGradeId('');}catch(e){setError(e.message);}finally{setBusy(false);}}
-  return <><PageHeading eyebrow="PEOPLE / ONBOARDING" title="Employee onboarding" description="Complete onboarding for employees who have met compliance requirements."/>
-    <div className="onboarding-layout"><section className="panel onboarding-panel"><div className="form-intro"><span className="form-intro-icon"><UserRoundCheck size={22}/></span><div><h3>Start employee onboarding</h3><p>Submit the employee and active organisational IDs to the existing backend workflow.</p></div></div>
-      {error&&<div className="alert error"><AlertCircle size={17}/>{error}</div>}
-      <form onSubmit={submit} className="onboarding-form"><label>Employee user ID<input value={userId} onChange={e=>setUserId(e.target.value)} placeholder="Paste employee User _id" required/></label><div className="form-two"><label>Department ID<input value={departmentId} onChange={e=>setDepartmentId(e.target.value)} placeholder="Active department ID" required/></label><label>Grade ID<input value={gradeId} onChange={e=>setGradeId(e.target.value)} placeholder="Active grade ID" required/></label></div><label>Employment type<select value={type} onChange={e=>setType(e.target.value)}><option value="BANK">Bank</option><option value="INTERNAL">Internal</option><option value="EXTERNAL">External</option></select></label><div className="form-hint"><AlertCircle size={16}/><span>Department and grade lookup APIs were not specified in the handoff. Use real active IDs and confirm the grade is mapped to the selected department.</span></div><button className="btn primary" disabled={busy||!userId.trim()||!departmentId.trim()||!gradeId.trim()}>{busy?<Spinner/>:<UserRoundCheck size={16}/>} Complete onboarding</button></form>
+  const [employees,setEmployees]=useState([]);const [departments,setDepartments]=useState([]);const [grades,setGrades]=useState([]);
+  const [employeeId,setEmployeeId]=useState('');const [departmentId,setDepartmentId]=useState('');const [gradeId,setGradeId]=useState('');const [type,setType]=useState('BANK');
+  const [employeeLoading,setEmployeeLoading]=useState(true);const [departmentLoading,setDepartmentLoading]=useState(true);const [gradeLoading,setGradeLoading]=useState(false);
+  const [employeeError,setEmployeeError]=useState('');const [departmentError,setDepartmentError]=useState('');const [gradeError,setGradeError]=useState('');
+  const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [success,setSuccess]=useState('');
+  const submitting=useRef(false);const gradeRequest=useRef(0);
+
+  const loadEmployees=useCallback(async()=>{
+    setEmployeeLoading(true);setEmployeeError('');
+    try{const data=lookupData(await api('/api/v1/admin/employees/onboarding-eligible',{token}),'Eligible employees');
+      if(data.some(item=>!item?._id||!item.fullName||!item.email))throw new Error('Eligible employees returned records missing _id, fullName, or email.');
+      setEmployees(data);
+    }catch(e){setEmployees([]);setEmployeeError(e.message||'Unable to load eligible employees.');}
+    finally{setEmployeeLoading(false);}
+  },[token]);
+  const loadDepartments=useCallback(async()=>{
+    setDepartmentLoading(true);setDepartmentError('');
+    try{const data=lookupData(await api('/api/v1/departments/registration',{token}),'Departments');
+      if(data.some(item=>!item?._id||!item.name))throw new Error('Departments returned records missing _id or name.');
+      setDepartments(data);
+    }catch(e){setDepartments([]);setDepartmentError(e.message||'Unable to load departments.');}
+    finally{setDepartmentLoading(false);}
+  },[token]);
+  const loadGrades=useCallback(async(id)=>{
+    const requestId=++gradeRequest.current;
+    if(!id){setGrades([]);setGradeError('');setGradeLoading(false);return;}
+    setGradeLoading(true);setGradeError('');setGrades([]);
+    try{const data=lookupData(await api(`/api/v1/grades/registration?departmentId=${encodeURIComponent(id)}`,{token}),'Grades');
+      if(data.some(item=>!item?._id||!item.name))throw new Error('Grades returned records missing _id or name.');
+      if(requestId===gradeRequest.current)setGrades(data);
+    }catch(e){if(requestId===gradeRequest.current){setGrades([]);setGradeError(e.message||'Unable to load grades.');}}
+    finally{if(requestId===gradeRequest.current)setGradeLoading(false);}
+  },[token]);
+  useEffect(()=>{loadEmployees();loadDepartments();},[loadEmployees,loadDepartments]);
+  useEffect(()=>{setGradeId('');setGrades([]);setGradeError('');if(departmentId)loadGrades(departmentId);},[departmentId,loadGrades]);
+
+  async function submit(e){
+    e.preventDefault();if(submitting.current||busy)return;
+    if(!employeeId||!departmentId||!gradeId){setError('Select an employee, department, grade, and employment type before submitting.');return;}
+    submitting.current=true;setBusy(true);setError('');setSuccess('');
+    try{
+      const result=await api(`/api/v1/admin/employees/${encodeURIComponent(employeeId)}/onboard`,{token,method:'POST',body:{departmentId,gradeId,type}});
+      setSuccess(result?.message||'Employee onboarding completed successfully.');
+      notify(result?.message||'Employee onboarding completed.');
+      setEmployeeId('');setDepartmentId('');setGradeId('');setType('BANK');setError('');
+      await loadEmployees();
+    }catch(e){setError(e.message||'Employee onboarding failed.');}
+    finally{submitting.current=false;setBusy(false);}
+  }
+  const employeeEmpty='No employees currently meet the onboarding prerequisites.';
+  const departmentEmpty='No active departments were returned.';
+  const gradeEmpty=departmentId?'No active grades are configured for this department.':'Select a department to load grades.';
+  const canSubmit=Boolean(employeeId&&departmentId&&gradeId&&!employeeLoading&&!departmentLoading&&!gradeLoading&&!employeeError&&!departmentError&&!gradeError&&!busy);
+  return <><PageHeading eyebrow="PEOPLE / ONBOARDING" title="Employee onboarding" description="Complete onboarding for employees who have met compliance requirements." action={<button className="btn secondary" type="button" onClick={()=>{loadEmployees();loadDepartments();if(departmentId)loadGrades(departmentId);}} disabled={employeeLoading||departmentLoading||gradeLoading}><RefreshCw size={16}/> Refresh lookups</button>}/>
+    <div className="onboarding-layout"><section className="panel onboarding-panel"><div className="form-intro"><span className="form-intro-icon"><UserRoundCheck size={22}/></span><div><h3>Start employee onboarding</h3><p>Select an eligible employee and their active organisational assignments.</p></div></div>
+      {error&&<div className="alert error" role="alert"><AlertCircle size={17}/><div><b>Onboarding failed</b><span>{error}</span></div><button type="button" className="icon-btn" aria-label="Dismiss error" onClick={()=>setError('')}><X size={15}/></button></div>}
+      {success&&<div className="alert success" role="status"><CheckCircle2 size={17}/><div><b>Onboarding complete</b><span>{success}</span></div><button type="button" className="icon-btn" aria-label="Dismiss success" onClick={()=>setSuccess('')}><X size={15}/></button></div>}
+      <form onSubmit={submit} className="onboarding-form">
+        <SearchableLookup label="Employee" placeholder="Search by employee name or email" items={employees} value={employeeId} onChange={id=>{setEmployeeId(id);setError('');setSuccess('');}} loading={employeeLoading} error={employeeError} onRetry={loadEmployees} emptyMessage={employeeEmpty} required/>
+        <div className="form-two">
+          <SearchableLookup label="Department" placeholder="Search departments…" items={departments} value={departmentId} onChange={id=>{setDepartmentId(id);setGradeId('');setError('');setSuccess('');}} loading={departmentLoading} error={departmentError} onRetry={loadDepartments} emptyMessage={departmentEmpty} required/>
+          <SearchableLookup label="Grade" placeholder={departmentId?'Search grades…':'Select a department first'} items={grades} value={gradeId} onChange={id=>{setGradeId(id);setError('');setSuccess('');}} loading={gradeLoading} error={gradeError} onRetry={()=>loadGrades(departmentId)} disabled={!departmentId} emptyMessage={gradeEmpty} required/>
+        </div>
+        <label>Employment type<select value={type} onChange={e=>setType(e.target.value)} required><option value="BANK">Bank</option><option value="INTERNAL">Internal</option><option value="EXTERNAL">External</option></select></label>
+        <div className="form-hint"><AlertCircle size={16}/><span>Only employees returned by the onboarding-eligible endpoint are selectable. The backend validates compliance, bank details, and department-grade mapping during submission.</span></div>
+        <button className="btn primary" disabled={!canSubmit}>{busy?<><Spinner/> Processing onboarding…</>:<><UserRoundCheck size={16}/> Complete onboarding</>}</button>
+      </form>
     </section><section className="panel checklist-panel"><PanelTitle title="Before you begin" subtitle="Backend prerequisites"/><div className="checklist">{['Employee email is verified','Overall compliance is approved','All required documents are approved','Bank details are complete','Department and grade are active and correctly mapped'].map((x,i)=><div className="checklist-item" key={x}><span>{i+1}</span><p>{x}</p></div>)}</div><div className="panel-note"><ShieldCheck size={16}/><span>The backend remains authoritative. If any prerequisite is missing, its validation message is shown and onboarding is not marked complete.</span></div></section></div>
   </>;
 }

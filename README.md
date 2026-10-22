@@ -43,7 +43,7 @@ npm run preview
 - Protected calls use `Authorization: Bearer <accessToken>`.
 - Login expects `tokens.accessToken` per the handoff. The response is handled defensively, but confirm the live response shape with the backend owner.
 - No demo records are presented as live records. When the backend is not configured/reachable, pages show an error and setup hint.
-- Department/grade lookup routes were not defined in the handoff. Onboarding therefore asks for IDs rather than inventing lookup APIs; confirm these APIs with the backend owner before production use.
+- Employee onboarding uses the documented eligible-employee, department-registration, and department-dependent grade-registration lookup routes. The UI stores selected `_id` values and sends IDs to the existing onboarding endpoint. Confirm the updated backend revision is deployed before live verification.
 - Document previews/downloads use the protected blob endpoint, not public storage paths.
 - Browser localStorage is used for the access token to keep the starter simple. For production, prefer a secure HttpOnly cookie/session architecture if the backend supports it.
 
