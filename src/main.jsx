@@ -24,6 +24,7 @@ const nav = [
   { id:'overview', label:'Overview', icon:LayoutDashboard, group:'WORKSPACE' },
   { id:'coordinators', label:'Coordinators', icon:Users, group:'WORKSPACE', countKey:'coordinators' },
   { id:'approvers', label:'Approvers', icon:ShieldCheck, group:'WORKSPACE', countKey:'approvers' },
+  { id:'departments', label:'Departments & grades', icon:Building2, group:'WORKSPACE' },
   { id:'compliance', label:'Employee compliance', icon:ClipboardCheck, group:'PEOPLE' },
   { id:'onboarding', label:'Employee onboarding', icon:UserRoundCheck, group:'PEOPLE' }
 ];
@@ -48,6 +49,7 @@ async function api(path, { token, method='GET', body, blob=false } = {}) {
     }
     throw new Error(serverMessage || `Request failed (${response.status}). Please retry.`);
   }
+  if (data?.success === false) throw new Error(data.message || 'The request was not successful.');
   return data;
 }
 function unwrap(result) {
@@ -123,6 +125,7 @@ function App() {
         {page==='overview'&&<Overview token={token} refreshKey={refreshKey} setPage={setPage} notify={notify}/>}
         {page==='coordinators'&&<Coordinators token={token} refreshKey={refreshKey} notify={notify}/>}
         {page==='approvers'&&<Approvers token={token} refreshKey={refreshKey} notify={notify}/>}
+        {page==='departments'&&<Departments token={token} refreshKey={refreshKey} notify={notify}/>}
         {page==='compliance'&&<Compliance token={token} refreshKey={refreshKey} notify={notify}/>}
         {page==='onboarding'&&<Onboarding token={token} notify={notify}/>}
       </div>
@@ -180,6 +183,130 @@ function Overview({token,refreshKey,setPage,notify}) {
 function SearchBar({value,onChange,placeholder='Search by name…'}) { return <label className="searchbox"><Search size={17}/><input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder}/>{value&&<button type="button" onClick={()=>onChange('')}><X size={14}/></button>}</label>; }
 function Tabs({value,onChange,items}) { return <div className="tabs">{items.map(i=><button key={i.value} className={value===i.value?'selected':''} onClick={()=>onChange(i.value)}>{i.label}</button>)}</div>; }
 function ConfirmModal({title,description,confirmLabel='Confirm',danger=false,onConfirm,onClose,busy}) { return <div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget&&!busy)onClose();}}><div className="modal"><button className="icon-btn modal-close" onClick={onClose}><X size={18}/></button><span className={`modal-symbol ${danger?'danger':''}`}>{danger?<AlertCircle size={23}/>:<ShieldCheck size={23}/>}</span><h3>{title}</h3><p>{description}</p><div className="modal-actions"><button className="btn secondary" onClick={onClose} disabled={busy}>Cancel</button><button className={`btn ${danger?'danger-btn':'primary'}`} onClick={onConfirm} disabled={busy}>{busy?<Spinner/>:null}{confirmLabel}</button></div></div></div>; }
+
+function departmentGradeNames(value) {
+  return value.split(/\r?\n/).map(name=>name.trim()).filter(Boolean);
+}
+function validateDepartmentGradeNames(names, required) {
+  if(required&&!names.length) return 'Enter at least one grade name.';
+  if(names.some(name=>name.length<2||name.length>120)) return 'Each grade name must be between 2 and 120 characters.';
+  if(new Set(names).size!==names.length) return 'Grade names must be unique within the batch.';
+  return '';
+}
+function Departments({token,refreshKey,notify}) {
+  const [items,setItems]=useState([]);
+  const [pagination,setPagination]=useState({page:1,limit:20,total:0,pages:0});
+  const [page,setPage]=useState(1);
+  const [activeFilter,setActiveFilter]=useState('');
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState('');
+  const [dialog,setDialog]=useState('');
+  const [selected,setSelected]=useState(null);
+  const [detailLoading,setDetailLoading]=useState(false);
+  const [detailError,setDetailError]=useState('');
+  const listRequest=useRef(0);
+  const detailRequest=useRef(0);
+  const limit=20;
+
+  const load=useCallback(async()=>{
+    const requestId=++listRequest.current;
+    setLoading(true);setError('');
+    try{
+      const query=new URLSearchParams({page:String(page),limit:String(limit)});
+      if(activeFilter)query.set('isActive',activeFilter);
+      const result=await api(`/api/v1/departments?${query.toString()}`,{token});
+      const data=result?.data;
+      if(!Array.isArray(data?.items)||!data?.pagination||![data.pagination.page,data.pagination.limit,data.pagination.total,data.pagination.pages].every(Number.isFinite))throw new Error('Departments returned an unexpected response. Expected paginated data.items and numeric data.pagination fields.');
+      if(data.items.some(item=>!item?._id||!item.name||typeof item.activeGradeCount!=='number'))throw new Error('Departments returned records missing _id, name, or activeGradeCount.');
+      if(requestId===listRequest.current){setItems(data.items);setPagination(data.pagination);}
+    }catch(e){if(requestId===listRequest.current){setItems([]);setError(e.message||'Unable to load departments.');}}
+    finally{if(requestId===listRequest.current)setLoading(false);}
+  },[activeFilter,page,token]);
+  useEffect(()=>{load();},[load,refreshKey]);
+
+  const openDetail=async department=>{
+    const requestId=++detailRequest.current;
+    setSelected(null);setDetailError('');setDetailLoading(true);
+    try{
+      const result=await api(`/api/v1/departments/${encodeURIComponent(department._id)}`,{token});
+      const detail=result?.data;
+      if(!detail||!Array.isArray(detail.grades))throw new Error('Department detail returned an unexpected response. Expected a department with a grades array.');
+      if(requestId===detailRequest.current)setSelected(detail);
+    }catch(e){if(requestId===detailRequest.current){setDetailError(e.message||'Unable to load department details.');setSelected(department);}}
+    finally{if(requestId===detailRequest.current)setDetailLoading(false);}
+  };
+  const closeDetail=()=>{detailRequest.current++;setSelected(null);setDetailError('');setDetailLoading(false);};
+  const onSaved=async mode=>{
+    if(mode==='create'&&page!==1){setPage(1);return;}
+    await load();
+    if(selected?._id)await openDetail(selected);
+  };
+  const pages=Math.max(1,Number(pagination.pages)||1);
+  return <>
+    <PageHeading eyebrow="WORKSPACE / ORGANISATION" title="Departments & grades" description="Manage department names and the shared grade mappings used across the system." action={<><button className="btn secondary" onClick={load} disabled={loading}><RefreshCw size={16}/> Refresh</button><button className="btn primary" onClick={()=>setDialog('create')}><Plus size={16}/> Create department</button></>}/>
+    <section className="panel data-panel">
+      <div className="data-toolbar">
+        <div className="queue-heading"><b>Department directory</b><small>Department IDs and grade mappings are preserved</small></div>
+        <label className="department-filter">Status<select value={activeFilter} onChange={e=>{setPage(1);setActiveFilter(e.target.value);}}><option value="">All departments</option><option value="true">Active</option><option value="false">Inactive</option></select></label>
+      </div>
+      {error&&<div className="alert error" role="alert"><AlertCircle size={17}/>{error}<button className="btn small secondary" onClick={load}>Retry</button></div>}
+      {loading?<div className="loading-row"><Spinner/> Loading departments…</div>:items.length===0?<Empty icon={Building2} title="No departments found" detail={activeFilter?'No departments match this status filter.':'Create a department to begin managing grade mappings.'}/>:<div className="table-wrap"><table><thead><tr><th>Department</th><th>Code</th><th>Active grades</th><th>Status</th><th className="align-right">Action</th></tr></thead><tbody>{items.map(item=><tr key={item._id}><td><div className="person-cell"><span className="avatar blue"><Building2 size={16}/></span><div><b>{item.name||'Unnamed department'}</b><small>ID · {String(item._id||'').slice(-8)||'—'}</small></div></div></td><td>{item.code||'—'}</td><td>{Number.isFinite(item.activeGradeCount)?item.activeGradeCount:0}</td><td><Status value={item.isActive===false?'INACTIVE':'ACTIVE'}/></td><td className="align-right"><button className="btn small secondary" onClick={()=>openDetail(item)}><Eye size={14}/> View details</button></td></tr>)}</tbody></table></div>}
+      <div className="table-foot"><span>{loading?'Loading…':`${pagination.total} ${pagination.total===1?'department':'departments'}`}</span><div className="department-pagination"><button className="btn small secondary" disabled={loading||page<=1} onClick={()=>setPage(value=>Math.max(1,value-1))}><ChevronLeft size={14}/> Previous</button><span>Page {page} of {pages}</span><button className="btn small secondary" disabled={loading||page>=pages} onClick={()=>setPage(value=>Math.min(pages,value+1))}>Next <ChevronRight size={14}/></button></div></div>
+    </section>
+    {(selected||detailLoading||detailError)&&<DepartmentDetailModal department={selected} loading={detailLoading} error={detailError} onClose={closeDetail} onRename={()=>setDialog('rename')} onAddGrades={()=>setDialog('add-grades')} onRetry={()=>selected&&openDetail(selected)}/>}
+    {dialog&&<DepartmentFormModal mode={dialog} department={selected} token={token} onClose={()=>setDialog('')} onDone={onSaved} notify={notify}/>}
+  </>;
+}
+function DepartmentFormModal({mode,department,token,onClose,onDone,notify}) {
+  const [name,setName]=useState(mode==='rename'?department?.name||'':'');
+  const [grades,setGrades]=useState('');
+  const [error,setError]=useState('');
+  const [busy,setBusy]=useState(false);
+  const creating=mode==='create';
+  const addingGrades=mode==='add-grades';
+  const gradeNames=departmentGradeNames(grades);
+  async function submit(e){
+    e.preventDefault();setError('');
+    const trimmedName=name.trim();
+    if(!addingGrades&&!trimmedName){setError('Department name is required.');return;}
+    if(creating||addingGrades){
+      const validationError=validateDepartmentGradeNames(gradeNames,addingGrades);
+      if(validationError){setError(validationError);return;}
+    }
+    setBusy(true);
+    try{
+      if(creating){
+        await api('/api/v1/departments',{token,method:'POST',body:{name:trimmedName,grades:gradeNames}});
+        notify('Department created.');
+      }else if(addingGrades){
+        await api(`/api/v1/departments/${encodeURIComponent(department._id)}/grades`,{token,method:'POST',body:{grades:gradeNames}});
+        notify('Department grades added.');
+      }else{
+        await api(`/api/v1/departments/${encodeURIComponent(department._id)}`,{token,method:'PATCH',body:{name:trimmedName}});
+        notify('Department renamed.');
+      }
+      onClose();await onDone(mode);
+    }catch(e){setError(e.message||'Unable to save department changes.');}
+    finally{setBusy(false);}
+  }
+  const title=creating?'Create department':addingGrades?'Add grades':'Rename department';
+  return <div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget&&!busy)onClose();}}><form className="modal form-modal department-modal" onSubmit={submit}><button type="button" className="icon-btn modal-close" onClick={onClose} disabled={busy}><X size={18}/></button><span className="modal-symbol"><Building2 size={23}/></span><h3>{title}</h3><p>{creating?'Create a department and optionally map initial grades.':addingGrades?`Add active grades to ${department?.name}. Already-mapped names reject the entire batch.`:'Only the department name changes; its ID, code, grade mappings, and historical references remain unchanged.'}</p>
+    {error&&<div className="alert error" role="alert"><AlertCircle size={17}/>{error}</div>}
+    {!addingGrades&&<label>Department name<input value={name} onChange={e=>setName(e.target.value)} maxLength="120" required/></label>}
+    {(creating||addingGrades)&&<label>Grade names <span className="muted">One name per line, 2–120 characters each</span><textarea value={grades} onChange={e=>setGrades(e.target.value)} rows="5" placeholder={'Grade 1\nSenior Grade'} required={addingGrades}/></label>}
+    <div className="modal-actions"><button type="button" className="btn secondary" onClick={onClose} disabled={busy}>Cancel</button><button className="btn primary" disabled={busy}>{busy?<Spinner/>:<Check size={16}/>} {creating?'Create department':addingGrades?'Add grades':'Save name'}</button></div>
+  </form></div>;
+}
+function DepartmentDetailModal({department,loading,error,onClose,onRename,onAddGrades,onRetry}) {
+  return <div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}><section className="modal department-detail-modal"><button type="button" className="icon-btn modal-close" onClick={onClose}><X size={18}/></button>
+    {loading?<div className="loading-row"><Spinner/> Loading department…</div>:error?<><span className="modal-symbol"><AlertCircle size={23}/></span><h3>Unable to load department</h3><p>{error}</p><div className="modal-actions"><button className="btn secondary" onClick={onClose}>Close</button><button className="btn primary" onClick={onRetry}><RefreshCw size={15}/> Retry</button></div></>:department&&<>
+      <span className="modal-symbol"><Building2 size={23}/></span><div className="department-detail-heading"><div><h3>{department.name}</h3><p>{department.code||'Code unavailable'} · <Status value={department.isActive===false?'INACTIVE':'ACTIVE'}/></p></div><div className="row-actions"><button className="btn small secondary" onClick={onRename}><Settings2 size={14}/> Rename</button><button className="btn small primary" onClick={onAddGrades} disabled={department.isActive===false}><Plus size={14}/> Add grades</button></div></div>
+      <div className="department-grades-heading"><b>Mapped grades</b><span>{department.grades.length} total</span></div>
+      {department.grades.length===0?<Empty icon={Stethoscope} title="No grades mapped" detail="Add grades to make them available for this department."/>:<div className="department-grade-list">{department.grades.map(grade=><div className="department-grade-row" key={grade._id}><div><b>{grade.name}</b><small>{grade.code||'Code unavailable'}</small></div><Status value={grade.isActive===false?'INACTIVE':'ACTIVE'}/></div>)}</div>}
+      <div className="modal-actions"><button className="btn secondary" onClick={onClose}>Close</button></div>
+    </>}
+  </section></div>;
+}
 
 function Coordinators({token,refreshKey,notify}) {
   const [tab,setTab]=useState('pending'); const [items,setItems]=useState([]); const [loading,setLoading]=useState(true); const [error,setError]=useState(''); const [query,setQuery]=useState('');

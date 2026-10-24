@@ -34,6 +34,7 @@ npm run preview
 - Overview (counts derived from documented list endpoints; no invented summary endpoint)
 - Coordinator applications (pending/approved, accept/reject)
 - Approver applications and management (pending/approved, create, responsibility, department scope, deactivate)
+- Department and grade management (paginated department list, create, inspect mappings, add grades, rename)
 - Employee compliance queue, detail, document review, bulk review and overall approval
 - Employee onboarding
 
