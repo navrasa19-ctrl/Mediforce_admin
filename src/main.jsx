@@ -25,8 +25,8 @@ const nav = [
   { id:'coordinators', label:'Coordinators', icon:Users, group:'WORKSPACE', countKey:'coordinators' },
   { id:'approvers', label:'Approvers', icon:ShieldCheck, group:'WORKSPACE', countKey:'approvers' },
   { id:'departments', label:'Departments & grades', icon:Building2, group:'WORKSPACE' },
-  { id:'compliance', label:'Employee compliance', icon:ClipboardCheck, group:'PEOPLE' },
-  { id:'onboarding', label:'Employee onboarding', icon:UserRoundCheck, group:'PEOPLE' }
+  { id:'employees', label:'Employee management', icon:BriefcaseMedical, group:'PEOPLE' },
+  { id:'compliance', label:'Employee compliance', icon:ClipboardCheck, group:'PEOPLE' }
 ];
 
 async function api(path, { token, method='GET', body, blob=false } = {}) {
@@ -45,7 +45,7 @@ async function api(path, { token, method='GET', body, blob=false } = {}) {
     // A 404 for a documented lookup usually means the configured backend is
     // missing the deployed route (or VITE_API_BASE_URL points at the wrong service).
     if (response.status === 404 && /route not found|cannot get|not found/i.test(String(serverMessage || ''))) {
-      throw new Error(`${serverMessage}. This API route is not available on the configured backend. Verify VITE_API_BASE_URL and deploy the backend revision that includes the onboarding-eligible lookup; the frontend cannot create a missing backend route.`);
+      throw new Error(`${serverMessage}. This API route is not available on the configured backend. Verify VITE_API_BASE_URL and deploy the backend revision that includes the required admin employee endpoints.`);
     }
     throw new Error(serverMessage || `Request failed (${response.status}). Please retry.`);
   }
@@ -90,7 +90,7 @@ function Login({ onLogin }) {
     finally { setBusy(false); }
   }
   return <div className="login-page">
-    <div className="login-decoration"><div className="login-orb orb-one"/><div className="login-orb orb-two"/><div className="login-brand"><span className="brand-mark"><HeartPulse size={24}/></span><span>MediForce<span className="brand-light"> Health</span></span></div><div className="login-message"><span className="eyebrow light">HEALTHCARE OPERATIONS</span><h1>Better care starts with<br/><em>better coordination.</em></h1><p>One secure workspace to review applications, verify compliance, and support employee onboarding.</p><div className="login-proof"><span><ShieldCheck size={17}/> Secure admin access</span><span><Activity size={17}/> Operational clarity</span></div></div><div className="login-bottom">MediForce Health · Admin workspace</div></div>
+    <div className="login-decoration"><div className="login-orb orb-one"/><div className="login-orb orb-two"/><div className="login-brand"><span className="brand-mark"><HeartPulse size={24}/></span><span>MediForce<span className="brand-light"> Health</span></span></div><div className="login-message"><span className="eyebrow light">HEALTHCARE OPERATIONS</span><h1>Better care starts with<br/><em>better coordination.</em></h1><p>One secure workspace to review applications, confirm employee status, and verify compliance.</p><div className="login-proof"><span><ShieldCheck size={17}/> Secure admin access</span><span><Activity size={17}/> Operational clarity</span></div></div><div className="login-bottom">MediForce Health · Admin workspace</div></div>
     <div className="login-form-wrap"><form className="login-form" onSubmit={submit}><div className="mobile-brand"><span className="brand-mark"><HeartPulse size={22}/></span><b>MediForce Health</b></div><span className="eyebrow">WELCOME BACK</span><h2>Sign in to your account</h2><p className="muted">Use your provisioned administrator credentials.</p>
       {error && <div className="alert error"><AlertCircle size={17}/>{error}</div>}
       <label>Email address<input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="admin@yourorganisation.com" autoComplete="username" required/></label>
@@ -126,8 +126,8 @@ function App() {
         {page==='coordinators'&&<Coordinators token={token} refreshKey={refreshKey} notify={notify}/>}
         {page==='approvers'&&<Approvers token={token} refreshKey={refreshKey} notify={notify}/>}
         {page==='departments'&&<Departments token={token} refreshKey={refreshKey} notify={notify}/>}
+        {page==='employees'&&<Employees token={token} refreshKey={refreshKey} notify={notify}/>}
         {page==='compliance'&&<Compliance token={token} refreshKey={refreshKey} notify={notify}/>}
-        {page==='onboarding'&&<Onboarding token={token} notify={notify}/>}
       </div>
       <footer className="footer"><span>© {new Date().getFullYear()} MediForce Health</span><span><ShieldCheck size={14}/> Protected admin workspace</span></footer>
     </main>
@@ -357,30 +357,233 @@ function ScopeModal({item,token,onClose,notify,onDone,busy,setBusy}) {
   return <div className="modal-backdrop"><form className="modal form-modal" onSubmit={submit}><button type="button" className="icon-btn modal-close" onClick={onClose}><X size={18}/></button><span className="modal-symbol"><Building2 size={23}/></span><h3>Department scope</h3><p>Replace the department IDs assigned to <b>{item.fullName}</b>. Use active department IDs supplied by your backend team.</p>{error&&<div className="alert error">{error}</div>}<label>Department IDs (comma-separated)<textarea value={ids} onChange={e=>setIds(e.target.value)} rows="3" placeholder="Paste active department IDs"/></label><div className="modal-actions"><button type="button" className="btn secondary" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy}>{busy?<Spinner/>:<Check size={16}/>} Save scope</button></div></form></div>;
 }
 
-function Compliance({token,refreshKey,notify}) {
-  const [items,setItems]=useState([]);const [loading,setLoading]=useState(true);const [error,setError]=useState('');const [query,setQuery]=useState('');const [selected,setSelected]=useState(null);const [confirm,setConfirm]=useState(null);const [busy,setBusy]=useState(false);
-  const load=useCallback(async()=>{setLoading(true);setError('');try{setItems(unwrap(await api(routes.compliance,{token})));}catch(e){setError(e.message);setItems([]);}finally{setLoading(false);}},[token]);
-  useEffect(()=>{load();},[load,refreshKey]);
-  const filtered=items.filter(x=>`${x.fullName||x.user?.fullName||''} ${x.email||x.user?.email||''} ${x.complianceStatus||x.status||''}`.toLowerCase().includes(query.toLowerCase()));
-  async function approveOverall(){setBusy(true);try{await api(`/api/v1/admin/employees/${encodeURIComponent(selected.userId||selected.user?._id||selected._id)}/compliance/approve`,{token,method:'PATCH',body:{}});notify('Employee compliance approved.');setConfirm(null);setSelected(null);await load();}catch(e){notify(e.message,'error');}finally{setBusy(false);}}
-  async function reviewDoc(doc,decision,notes=''){setBusy(true);try{await api(`/api/v1/admin/employees/${encodeURIComponent(selected.userId||selected.user?._id||selected._id)}/compliance/documents/${encodeURIComponent(doc._id)}/review`,{token,method:'PATCH',body:{decision,reviewNotes:notes||undefined}});notify(`Document ${decision.toLowerCase()}.`);await load();const fresh=unwrap(await api(`/api/v1/admin/employees/${encodeURIComponent(selected.userId||selected.user?._id||selected._id)}/compliance`,{token}));setSelected(fresh);}catch(e){notify(e.message,'error');}finally{setBusy(false);}}
-  async function downloadDoc(doc){try{const blob=await api(`/api/v1/employees/compliance/documents/${encodeURIComponent(doc._id)}?download=true`,{token,blob:true});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=doc.originalName||'employee-document';a.click();URL.revokeObjectURL(url);}catch(e){notify(e.message,'error');}}
-  return <><PageHeading eyebrow="PEOPLE / COMPLIANCE" title="Employee compliance" description="Review submitted documents and verify onboarding requirements." action={<button className="btn secondary" onClick={load}><RefreshCw size={16}/> Refresh queue</button>}/>
-    <section className="panel data-panel"><div className="data-toolbar"><div className="queue-heading"><b>Pending review queue</b><small>Employee records returned by the backend</small></div><SearchBar value={query} onChange={setQuery} placeholder="Search employee…"/></div>
-    {error&&<div className="alert error"><AlertCircle size={17}/>{error}<button className="btn small secondary" onClick={load}>Retry</button></div>}
-    {loading?<div className="loading-row"><Spinner/> Loading compliance queue…</div>:filtered.length===0?<Empty icon={FileCheck2} title="No employees to review" detail="The backend returned no pending compliance records."/>:<div className="table-wrap"><table><thead><tr><th>Employee</th><th>Documents</th><th>Compliance</th><th>Last updated</th><th className="align-right">Action</th></tr></thead><tbody>{filtered.map(item=>{const docs=item.documents||item.compliance?.documents||[];const name=item.fullName||item.user?.fullName||item.name||'Employee';return <tr key={item._id||item.userId}><td><div className="person-cell"><Avatar name={name}/><div><b>{name}</b><small>{item.email||item.user?.email||'Employee profile'}</small></div></div></td><td><span className="doc-count"><FileText size={15}/>{docs.length||item.documentCount||'—'} documents</span></td><td><div className="compliance-cell"><Status value={item.complianceStatus||item.status||'PENDING'}/>{item.compliancePercentage!=null&&<small>{item.compliancePercentage}% complete</small>}</div></td><td>{fmtDate(item.updatedAt||item.createdAt)}</td><td className="align-right"><button className="btn small primary" onClick={async()=>{setSelected(item);try{const id=item.userId||item.user?._id||item._id;const detail=await api(`/api/v1/admin/employees/${encodeURIComponent(id)}/compliance`,{token});setSelected(detail?.data||detail);}catch(e){notify(e.message,'error');}}}><Eye size={14}/> Review</button></td></tr>})}</tbody></table></div>}
-    <div className="table-foot"><span>{loading?'Loading…':`${filtered.length} employees`}</span><span>Protected employee data</span></div></section>
-    {selected&&<ComplianceDrawer item={selected} onClose={()=>setSelected(null)} reviewDoc={reviewDoc} downloadDoc={downloadDoc} onApprove={()=>setConfirm({type:'approve'})} busy={busy}/>}
-    {confirm?.type==='approve'&&<ConfirmModal title="Approve overall compliance?" description="The backend requires every required document type to have an approved document and bank details to be complete. If a prerequisite is missing, the backend will return its validation message." confirmLabel="Approve compliance" busy={busy} onClose={()=>setConfirm(null)} onConfirm={approveOverall}/>}
+function Employees({token,refreshKey,notify}) {
+  const [items,setItems]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState('');
+  const [query,setQuery]=useState('');
+  const [status,setStatus]=useState('PENDING');
+  const [pageNo,setPageNo]=useState(1);
+  const [pagination,setPagination]=useState({page:1,limit:20,total:0,pages:0});
+  const [selected,setSelected]=useState(null);
+  const [detailLoading,setDetailLoading]=useState(false);
+  const [detailError,setDetailError]=useState('');
+  const [actionBusy,setActionBusy]=useState(false);
+  const [actionState,setActionState]=useState(null);
+
+  const load=useCallback(async()=>{
+    setLoading(true); setError('');
+    try {
+      const params=new URLSearchParams({page:String(pageNo),limit:'20'});
+      if(status) params.set('status',status);
+      const result=await api(`/api/v1/admin/employees/applications?${params.toString()}`,{token});
+      const payload=result?.data ?? result;
+      const safeItems=Array.isArray(payload?.items)?payload.items:[];
+      const safePagination=payload?.pagination || {};
+      setItems(safeItems);
+      setPagination({page:Number(safePagination.page)||1,limit:Number(safePagination.limit)||20,total:Number(safePagination.total)||0,pages:Number(safePagination.pages)||0});
+    } catch (e) {
+      setItems([]); setError(e.message || 'Unable to load employee applications.');
+    } finally { setLoading(false); }
+  },[pageNo,status,token]);
+
+  useEffect(()=>{ load(); },[load,refreshKey]);
+
+  const filtered=items.filter(item => {
+    const haystack=[item.fullName,item.email,item.requestedEmploymentType,item.applicationStatus,item.complianceStatus,item.user?.fullName,item.user?.email].join(' ').toLowerCase();
+    return haystack.includes(query.toLowerCase());
+  });
+
+  const openDetail=useCallback(async(employee)=>{
+    setSelected(null); setDetailLoading(true); setDetailError('');
+    try {
+      const id=employee?.user?._id || employee?._id || employee?.userId;
+      const payload=await api(`/api/v1/admin/employees/applications/${encodeURIComponent(id)}`,{token});
+      setSelected(payload?.data ?? payload);
+    } catch (e) {
+      setDetailError(e.message || 'Unable to load employee details.');
+    } finally { setDetailLoading(false); }
+  },[token]);
+
+  async function performAction(action, reason='') {
+    if (!selected) return;
+    const employeeId=selected.user?._id || selected._id || selected.userId;
+    if (!employeeId) return;
+    setActionBusy(true); setActionState(action);
+    try {
+      const endpoint = action === 'request-corrections'
+        ? `/api/v1/admin/employees/applications/${encodeURIComponent(employeeId)}/action-required`
+        : `/api/v1/admin/employees/applications/${encodeURIComponent(employeeId)}/reject`;
+      await api(endpoint,{token,method:'PATCH',body:{reason: String(reason || 'Application requires administrator review.').slice(0,500)}});
+      notify(action === 'request-corrections' ? 'Correction request sent.' : 'Employee application rejected.');
+      setActionState(null);
+      await load();
+      await openDetail(selected);
+    } catch (e) {
+      notify(e.message || 'The action could not be completed.', 'error');
+    } finally { setActionBusy(false); }
+  }
+
+  return <><PageHeading eyebrow="PEOPLE / EMPLOYEE MANAGEMENT" title="Employee management" description="Review employee applications, confirm applicant details, and manage compliance decisions." action={<button className="btn secondary" onClick={load}><RefreshCw size={16}/> Refresh</button>}/>
+    <section className="panel data-panel">
+      <div className="data-toolbar">
+        <div className="queue-heading"><b>Applications</b><small>Server-side paginated employee application list</small></div>
+        <div className="toolbar-inline">
+          <label className="department-filter">Status<select value={status} onChange={e=>{setPageNo(1);setStatus(e.target.value);}}><option value="">All</option>{['PENDING','ACTION_REQUIRED','REJECTED','APPROVED'].map(value=><option key={value} value={value}>{value}</option>)}</select></label>
+          <SearchBar value={query} onChange={setQuery} placeholder="Search name, email, type…"/>
+        </div>
+      </div>
+      {error&&<div className="alert error"><AlertCircle size={17}/>{error}<button className="btn small secondary" onClick={load}>Retry</button></div>}
+      {loading?<div className="loading-row"><Spinner/> Loading employee applications…</div>:filtered.length===0?<Empty icon={BriefcaseMedical} title="No applications found" detail={query ? 'No employee records match the current search.' : 'No employee applications are available for this status filter.'}/> :
+      <div className="table-wrap"><table><thead><tr><th>Employee</th><th>Requested type</th><th>Application status</th><th>Compliance</th><th className="align-right">Action</th></tr></thead><tbody>{filtered.map(item=>{ const name=item.fullName || item.user?.fullName || item.name || 'Employee'; return <tr key={item._id || item.userId}><td><div className="person-cell"><Avatar name={name}/><div><b>{name}</b><small>{item.email || item.user?.email || 'Email unavailable'}</small></div></div></td><td>{item.requestedEmploymentType || item.requestedType || '—'}</td><td><Status value={item.applicationStatus || item.status || 'PENDING'}/></td><td><Status value={item.complianceStatus || 'PENDING'}/></td><td className="align-right"><button className="btn small secondary" onClick={()=>openDetail(item)}><Eye size={14}/> View</button></td></tr>;})}</tbody></table></div>}
+      <div className="table-foot"><span>{loading ? 'Loading…' : `${pagination.total} records`}</span><div className="department-pagination"><button className="btn small secondary" disabled={loading || pageNo <= 1} onClick={()=>setPageNo(value=>Math.max(1,value-1))}><ChevronLeft size={14}/> Prev</button><span>Page {pageNo} of {Math.max(1,pagination.pages || 1)}</span><button className="btn small secondary" disabled={loading || pageNo >= (pagination.pages || 1)} onClick={()=>setPageNo(value=>Math.min(Math.max(1,pagination.pages||1),value+1))}>Next <ChevronRight size={14}/></button></div></div>
+    </section>
+    {selected && <div className="drawer-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setSelected(null);}}><aside className="detail-drawer"><div className="drawer-head"><div><span className="eyebrow">APPLICATION DETAILS</span><h2>{selected.fullName || selected.user?.fullName || 'Employee'}</h2><p>{selected.email || selected.user?.email || 'Profile data unavailable'}</p></div><button className="icon-btn" onClick={()=>setSelected(null)}><X size={19}/></button></div>
+      <div className="drawer-scroll">
+        {detailLoading ? <div className="loading-row"><Spinner/> Loading employee details…</div> : detailError ? <div className="alert error"><AlertCircle size={17}/>{detailError}</div> : <div className="detail-summary">
+          <div><small>Requested type</small><b>{selected.requestedEmploymentType || selected.requestedType || '—'}</b></div>
+          <div><small>Application status</small><Status value={selected.applicationStatus || selected.status || 'PENDING'}/></div>
+          <div><small>Compliance</small><Status value={selected.complianceStatus || 'PENDING'}/></div>
+          <div><small>Email verified</small><b>{selected.emailVerified === true ? 'Verified' : selected.emailVerificationStatus || '—'}</b></div>
+          <div><small>Candidate type</small><b>{selected.candidate?.type || selected.candidateType || '—'}</b></div>
+          <div><small>Department</small><b>{selected.candidate?.departmentId || selected.departmentId || '—'}</b></div>
+          <div><small>Grade</small><b>{selected.candidate?.gradeId || selected.gradeId || '—'}</b></div>
+        </div>}
+        <div className="drawer-section-title"><h3>Profile</h3></div>
+        <div className="meta-grid">
+          <div><span>Date of birth</span><b>{selected.dateOfBirth ? fmtDate(selected.dateOfBirth) : '—'}</b></div>
+          <div><span>Gender</span><b>{selected.gender || '—'}</b></div>
+          <div><span>Phone</span><b>{selected.phone || selected.contactDetails?.phone || '—'}</b></div>
+          <div><span>Address</span><b>{selected.address ? `${selected.address.city || ''} ${selected.address.state || ''}`.trim() || '—' : '—'}</b></div>
+        </div>
+        <div className="drawer-section-title"><h3>Application actions</h3></div>
+        <div className="drawer-actions-row">
+          <button className="btn small secondary" disabled={actionBusy} onClick={()=>performAction('request-corrections', 'Please provide the missing verification details.')}>Request corrections</button>
+          <button className="btn small danger-btn" disabled={actionBusy} onClick={()=>performAction('reject', 'Required documentation could not be verified.')}>Reject application</button>
+        </div>
+      </div>
+      <div className="drawer-footer"><button className="btn secondary" onClick={()=>setSelected(null)}>Close</button></div>
+    </aside></div>}
   </>;
 }
-function ComplianceDrawer({item,onClose,reviewDoc,downloadDoc,onApprove,busy}) {
-  const [notes,setNotes]=useState('');const docs=item.documents||item.compliance?.documents||item.data?.documents||[];
-  const name=item.fullName||item.user?.fullName||item.name||'Employee';
-  return <div className="drawer-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}><aside className="detail-drawer"><div className="drawer-head"><div><span className="eyebrow">EMPLOYEE REVIEW</span><h2>{name}</h2><p>{item.email||item.user?.email||'Compliance details'}</p></div><button className="icon-btn" onClick={onClose}><X size={19}/></button></div><div className="drawer-scroll"><div className="detail-summary"><div><small>Overall status</small><Status value={item.complianceStatus||item.status||'PENDING'}/></div><div><small>Completion</small><b>{item.compliancePercentage??'—'}{item.compliancePercentage!=null?'%':''}</b></div><div><small>Documents</small><b>{docs.length}</b></div></div><div className="drawer-section-title"><h3>Submitted documents</h3><span>{docs.length} files</span></div>
-    {docs.length===0?<Empty icon={FileText} title="No document details found" detail="The response did not include a documents array. Confirm the live compliance detail response shape."/>:docs.map(doc=><div className="document-card" key={doc._id}><div className="document-icon"><FileText size={19}/></div><div className="document-main"><b>{doc.originalName||doc.type||'Document'}</b><small>{String(doc.type||'Document').replaceAll('_',' ')} · {doc.fileSize?`${Math.round(doc.fileSize/1024)} KB`:'Size unavailable'}</small><Status value={doc.status||'PENDING'}/>{doc.issueDate&&<small>Issued {fmtDate(doc.issueDate)}{doc.expiryDate?` · Expires ${fmtDate(doc.expiryDate)}`:''}</small>}</div><div className="document-actions"><button className="icon-btn" title="Download protected document" onClick={()=>downloadDoc(doc)} disabled={!doc.hasUploadedFile}><Download size={17}/></button>{String(doc.status).toUpperCase()!=='APPROVED'&&<button className="icon-btn" title="Approve document" disabled={busy} onClick={()=>reviewDoc(doc,'APPROVED',notes)}><Check size={17}/></button>}{String(doc.status).toUpperCase()!=='REJECTED'&&<button className="icon-btn danger-icon" title="Reject document" disabled={busy} onClick={()=>reviewDoc(doc,'REJECTED',notes)}><X size={17}/></button>}</div></div>)}
-    <label className="notes-label">Review notes <span>Optional · up to 500 characters</span><textarea rows="3" maxLength="500" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Add notes for document decisions…"/></label>
-    <div className="drawer-callout"><AlertCircle size={17}/><span>Overall approval requires all required documents approved and bank details marked complete.</span></div></div><div className="drawer-footer"><button className="btn secondary" onClick={onClose}>Close</button><button className="btn primary" onClick={onApprove} disabled={busy}><CheckCheck size={16}/> Approve overall compliance</button></div></aside></div>;
+
+function Compliance({token,refreshKey,notify}) {
+  const [items,setItems]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState('');
+  const [query,setQuery]=useState('');
+  const [selected,setSelected]=useState(null);
+  const [confirm,setConfirm]=useState(null);
+  const [busy,setBusy]=useState(false);
+
+  const load=useCallback(async()=>{
+    setLoading(true); setError('');
+    try {
+      const result=await api(routes.compliance,{token});
+      setItems(unwrap(result));
+    } catch (e) {
+      setItems([]); setError(e.message || 'Unable to load the compliance queue.');
+    } finally { setLoading(false); }
+  },[token]);
+
+  useEffect(()=>{ load(); },[load,refreshKey]);
+
+  const filtered=items.filter(x=>`${x.fullName||x.user?.fullName||''} ${x.email||x.user?.email||''} ${x.complianceStatus||x.status||''}`.toLowerCase().includes(query.toLowerCase()));
+
+  async function approveOverall(){
+    if (!selected) return;
+    const employeeId = selected.userId || selected.user?._id || selected._id;
+    if (!employeeId) return;
+    setBusy(true);
+    try {
+      await api(`/api/v1/admin/employees/${encodeURIComponent(employeeId)}/compliance/approve`,{token,method:'PATCH',body:{}});
+      notify('Employee compliance approved.');
+      setConfirm(null); setSelected(null); await load();
+    } catch (e) {
+      notify(e.message || 'Overall approval failed.', 'error');
+    } finally { setBusy(false); }
+  }
+
+  async function bulkApproveDocuments(){
+    if (!selected) return;
+    const employeeId = selected.userId || selected.user?._id || selected._id;
+    const docs = Array.isArray(selected.documents) ? selected.documents : Array.isArray(selected.compliance?.documents) ? selected.compliance.documents : [];
+    const eligible = docs.filter(doc => !['APPROVED','REJECTED'].includes(String(doc?.status || '').toUpperCase()) && doc?._id);
+    if (!employeeId || eligible.length === 0) return;
+    setBusy(true);
+    try {
+      const result=await api(`/api/v1/admin/employees/${encodeURIComponent(employeeId)}/compliance/documents/review-bulk`,{token,method:'PATCH',body:{decision:'APPROVED',documentIds:eligible.map(doc=>doc._id),reviewNotes:''}});
+      notify(result?.message || 'Bulk approval completed.');
+      setConfirm(null); await openEmployee(selected);
+    } catch (e) {
+      notify(e.message || 'Bulk approval failed.', 'error');
+    } finally { setBusy(false); }
+  }
+
+  async function reviewDoc(doc,decision,notes=''){
+    if (!selected) return;
+    const employeeId = selected.userId || selected.user?._id || selected._id;
+    if (!employeeId) return;
+    if (!['APPROVED','REJECTED'].includes(String(decision).toUpperCase())) return;
+    setBusy(true);
+    try {
+      await api(`/api/v1/admin/employees/${encodeURIComponent(employeeId)}/compliance/documents/${encodeURIComponent(doc._id)}/review`,{token,method:'PATCH',body:{decision:String(decision).toUpperCase(), reviewNotes: String(notes || '').slice(0,500)}});
+      notify(`Document ${String(decision).toLowerCase()}.`);
+      const detail=await api(`/api/v1/admin/employees/${encodeURIComponent(employeeId)}/compliance`,{token});
+      setSelected(detail?.data ?? detail);
+      await load();
+    } catch (e) {
+      notify(e.message || 'Unable to update the document review.', 'error');
+    } finally { setBusy(false); }
+  }
+
+  async function downloadDoc(doc){
+    try {
+      const blob=await api(`/api/v1/employees/compliance/documents/${encodeURIComponent(doc._id)}?download=true`,{token,blob:true});
+      const url=URL.createObjectURL(blob);
+      const anchor=document.createElement('a');
+      anchor.href=url; anchor.download=doc.originalName || doc.type || 'employee-document'; anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      notify(e.message || 'The document could not be downloaded.', 'error');
+    }
+  }
+
+  async function openEmployee(item){
+    setSelected(item);
+    try {
+      const id=item.userId || item.user?._id || item._id;
+      if (!id) return;
+      const detail=await api(`/api/v1/admin/employees/${encodeURIComponent(id)}/compliance`,{token});
+      setSelected(detail?.data ?? detail);
+    } catch (e) {
+      notify(e.message || 'Unable to load the employee compliance record.', 'error');
+    }
+  }
+
+  return <><PageHeading eyebrow="PEOPLE / COMPLIANCE" title="Employee compliance" description="Review submitted documents and verify compliance requirements without opening a separate onboarding screen." action={<button className="btn secondary" onClick={load}><RefreshCw size={16}/> Refresh queue</button>}/>
+    <section className="panel data-panel"><div className="data-toolbar"><div className="queue-heading"><b>Pending review queue</b><small>Employee records returned by the backend</small></div><SearchBar value={query} onChange={setQuery} placeholder="Search employee…"/></div>
+    {error&&<div className="alert error"><AlertCircle size={17}/>{error}<button className="btn small secondary" onClick={load}>Retry</button></div>}
+    {loading?<div className="loading-row"><Spinner/> Loading compliance queue…</div>:filtered.length===0?<Empty icon={FileCheck2} title="No employees to review" detail="The backend returned no pending compliance records."/>:<div className="table-wrap"><table><thead><tr><th>Employee</th><th>Documents</th><th>Compliance</th><th>Last updated</th><th className="align-right">Action</th></tr></thead><tbody>{filtered.map(item=>{const docs=item.documents||item.compliance?.documents||[];const name=item.fullName||item.user?.fullName||item.name||'Employee';return <tr key={item._id||item.userId}><td><div className="person-cell"><Avatar name={name}/><div><b>{name}</b><small>{item.email||item.user?.email||'Employee profile'}</small></div></div></td><td><span className="doc-count"><FileText size={15}/>{docs.length||item.documentCount||'—'} documents</span></td><td><div className="compliance-cell"><Status value={item.complianceStatus||item.status||'PENDING'}/>{item.compliancePercentage!=null&&<small>{item.compliancePercentage}% complete</small>}</div></td><td>{fmtDate(item.updatedAt||item.createdAt)}</td><td className="align-right"><button className="btn small primary" onClick={()=>openEmployee(item)}><Eye size={14}/> Review</button></td></tr>})}</tbody></table></div>}
+    <div className="table-foot"><span>{loading?'Loading…':`${filtered.length} employees`}</span><span>Protected employee data</span></div></section>
+    {selected&&<ComplianceDrawer item={selected} onClose={()=>setSelected(null)} reviewDoc={reviewDoc} downloadDoc={downloadDoc} onApprove={()=>setConfirm({type:'approve'})} busy={busy} onBulkApprove={()=>setConfirm({type:'bulk-approve'})}/>} 
+    {confirm?.type==='approve'&&<ConfirmModal title="Approve overall compliance?" description="The backend requires all required documents and bank details to pass before the employee overall compliance record can be approved." confirmLabel="Approve compliance" busy={busy} onClose={()=>setConfirm(null)} onConfirm={approveOverall}/>}
+    {confirm?.type==='bulk-approve'&&<ConfirmModal title="Approve all eligible documents?" description="This submits the eligible document IDs in one atomic batch using the documented bulk-review contract." confirmLabel="Approve all" busy={busy} onClose={()=>setConfirm(null)} onConfirm={bulkApproveDocuments}/>}
+  </>;
+}
+
+function ComplianceDrawer({item,onClose,reviewDoc,downloadDoc,onApprove,busy,onBulkApprove}) {
+  const [notes,setNotes]=useState('');
+  const docs = Array.isArray(item?.documents) ? item.documents : Array.isArray(item?.compliance?.documents) ? item.compliance.documents : Array.isArray(item?.data?.documents) ? item.data.documents : [];
+  const name=item?.fullName || item?.user?.fullName || item?.name || 'Employee';
+  const eligibleDocs=docs.filter(doc => { const status=String(doc?.status || '').toUpperCase(); return status !== 'APPROVED' && status !== 'REJECTED'; });
+
+  return <div className="drawer-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}><aside className="detail-drawer"><div className="drawer-head"><div><span className="eyebrow">EMPLOYEE REVIEW</span><h2>{name}</h2><p>{item.email||item.user?.email||'Compliance details'}</p></div><button className="icon-btn" onClick={onClose}><X size={19}/></button></div><div className="drawer-scroll"><div className="detail-summary"><div><small>Overall status</small><Status value={item.complianceStatus||item.status||'PENDING'}/></div><div><small>Completion</small><b>{item.compliancePercentage!=null? `${item.compliancePercentage}%` : '—'}</b></div><div><small>Documents</small><b>{docs.length}</b></div></div>
+      <div className="drawer-section-title"><h3>Submitted documents</h3><span>{docs.length} files</span></div>
+      {docs.length===0?<Empty icon={FileText} title="No document details found" detail="The response did not include any documents to review."/>:docs.map(doc=><div className="document-card" key={doc._id}><div className="document-icon"><FileText size={19}/></div><div className="document-main"><b>{doc.originalName||doc.type||'Document'}</b><small>{String(doc.type||'Document').replaceAll('_',' ')} · {doc.fileSize ? `${Math.round(doc.fileSize/1024)} KB` : 'Size unavailable'}</small><Status value={doc.status||'PENDING'}/>{doc.issueDate&&<small>Issued {fmtDate(doc.issueDate)}{doc.expiryDate?` · Expires ${fmtDate(doc.expiryDate)}`:''}</small>}</div><div className="document-actions"><button className="icon-btn" title="Download protected document" onClick={()=>downloadDoc(doc)}><Download size={17}/></button>{String(doc.status).toUpperCase()!=='APPROVED'&&<button className="icon-btn" title="Approve document" disabled={busy} onClick={()=>reviewDoc(doc,'APPROVED',notes)}><Check size={17}/></button>}{String(doc.status).toUpperCase()!=='REJECTED'&&<button className="icon-btn danger-icon" title="Reject document" disabled={busy} onClick={()=>reviewDoc(doc,'REJECTED',notes)}><X size={17}/></button>}</div></div>)}
+      <label className="notes-label">Review notes <span>Optional · up to 500 characters</span><textarea rows="3" maxLength="500" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Add notes for document decisions…"/></label>
+      <div className="drawer-actions-row"><button className="btn small secondary" type="button" disabled={busy || eligibleDocs.length===0} onClick={onBulkApprove}>Approve all documents{eligibleDocs.length ? ` (${eligibleDocs.length})` : ''}</button></div>
+      <div className="drawer-callout"><AlertCircle size={17}/><span>Document-level approval updates the document status only; it does not automatically approve the whole employee submission.</span></div></div><div className="drawer-footer"><button className="btn secondary" onClick={onClose}>Close</button><button className="btn primary" onClick={onApprove} disabled={busy}><CheckCheck size={16}/> Approve overall compliance</button></div></aside></div>;
 }
 
 function lookupData(result, label) {
@@ -425,78 +628,6 @@ function SearchableLookup({label,placeholder,items,value,onChange,loading,error,
     {error&&<span className="lookup-error">{error} <button type="button" className="text-btn" onClick={onRetry}>Retry</button></span>}
     {!error&&!loading&&items.length===0&&<span className="lookup-help">{emptyMessage}</span>}
   </label>;
-}
-
-function Onboarding({token,notify}) {
-  const [employees,setEmployees]=useState([]);const [departments,setDepartments]=useState([]);const [grades,setGrades]=useState([]);
-  const [employeeId,setEmployeeId]=useState('');const [departmentId,setDepartmentId]=useState('');const [gradeId,setGradeId]=useState('');const [type,setType]=useState('BANK');
-  const [employeeLoading,setEmployeeLoading]=useState(true);const [departmentLoading,setDepartmentLoading]=useState(true);const [gradeLoading,setGradeLoading]=useState(false);
-  const [employeeError,setEmployeeError]=useState('');const [departmentError,setDepartmentError]=useState('');const [gradeError,setGradeError]=useState('');
-  const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [success,setSuccess]=useState('');
-  const submitting=useRef(false);const gradeRequest=useRef(0);
-
-  const loadEmployees=useCallback(async()=>{
-    setEmployeeLoading(true);setEmployeeError('');
-    try{const data=lookupData(await api('/api/v1/admin/employees/onboarding-eligible',{token}),'Eligible employees');
-      if(data.some(item=>!item?._id||!item.fullName||!item.email))throw new Error('Eligible employees returned records missing _id, fullName, or email.');
-      setEmployees(data);
-    }catch(e){setEmployees([]);setEmployeeError(e.message||'Unable to load eligible employees.');}
-    finally{setEmployeeLoading(false);}
-  },[token]);
-  const loadDepartments=useCallback(async()=>{
-    setDepartmentLoading(true);setDepartmentError('');
-    try{const data=lookupData(await api('/api/v1/departments/registration',{token}),'Departments');
-      if(data.some(item=>!item?._id||!item.name))throw new Error('Departments returned records missing _id or name.');
-      setDepartments(data);
-    }catch(e){setDepartments([]);setDepartmentError(e.message||'Unable to load departments.');}
-    finally{setDepartmentLoading(false);}
-  },[token]);
-  const loadGrades=useCallback(async(id)=>{
-    const requestId=++gradeRequest.current;
-    if(!id){setGrades([]);setGradeError('');setGradeLoading(false);return;}
-    setGradeLoading(true);setGradeError('');setGrades([]);
-    try{const data=lookupData(await api(`/api/v1/grades/registration?departmentId=${encodeURIComponent(id)}`,{token}),'Grades');
-      if(data.some(item=>!item?._id||!item.name))throw new Error('Grades returned records missing _id or name.');
-      if(requestId===gradeRequest.current)setGrades(data);
-    }catch(e){if(requestId===gradeRequest.current){setGrades([]);setGradeError(e.message||'Unable to load grades.');}}
-    finally{if(requestId===gradeRequest.current)setGradeLoading(false);}
-  },[token]);
-  useEffect(()=>{loadEmployees();loadDepartments();},[loadEmployees,loadDepartments]);
-  useEffect(()=>{setGradeId('');setGrades([]);setGradeError('');if(departmentId)loadGrades(departmentId);},[departmentId,loadGrades]);
-
-  async function submit(e){
-    e.preventDefault();if(submitting.current||busy)return;
-    if(!employeeId||!departmentId||!gradeId){setError('Select an employee, department, grade, and employment type before submitting.');return;}
-    submitting.current=true;setBusy(true);setError('');setSuccess('');
-    try{
-      const result=await api(`/api/v1/admin/employees/${encodeURIComponent(employeeId)}/onboard`,{token,method:'POST',body:{departmentId,gradeId,type}});
-      setSuccess(result?.message||'Employee onboarding completed successfully.');
-      notify(result?.message||'Employee onboarding completed.');
-      setEmployeeId('');setDepartmentId('');setGradeId('');setType('BANK');setError('');
-      await loadEmployees();
-    }catch(e){setError(e.message||'Employee onboarding failed.');}
-    finally{submitting.current=false;setBusy(false);}
-  }
-  const employeeEmpty='No employees currently meet the onboarding prerequisites.';
-  const departmentEmpty='No active departments were returned.';
-  const gradeEmpty=departmentId?'No active grades are configured for this department.':'Select a department to load grades.';
-  const canSubmit=Boolean(employeeId&&departmentId&&gradeId&&!employeeLoading&&!departmentLoading&&!gradeLoading&&!employeeError&&!departmentError&&!gradeError&&!busy);
-  return <><PageHeading eyebrow="PEOPLE / ONBOARDING" title="Employee onboarding" description="Complete onboarding for employees who have met compliance requirements." action={<button className="btn secondary" type="button" onClick={()=>{loadEmployees();loadDepartments();if(departmentId)loadGrades(departmentId);}} disabled={employeeLoading||departmentLoading||gradeLoading}><RefreshCw size={16}/> Refresh lookups</button>}/>
-    <div className="onboarding-layout"><section className="panel onboarding-panel"><div className="form-intro"><span className="form-intro-icon"><UserRoundCheck size={22}/></span><div><h3>Start employee onboarding</h3><p>Select an eligible employee and their active organisational assignments.</p></div></div>
-      {error&&<div className="alert error" role="alert"><AlertCircle size={17}/><div><b>Onboarding failed</b><span>{error}</span></div><button type="button" className="icon-btn" aria-label="Dismiss error" onClick={()=>setError('')}><X size={15}/></button></div>}
-      {success&&<div className="alert success" role="status"><CheckCircle2 size={17}/><div><b>Onboarding complete</b><span>{success}</span></div><button type="button" className="icon-btn" aria-label="Dismiss success" onClick={()=>setSuccess('')}><X size={15}/></button></div>}
-      <form onSubmit={submit} className="onboarding-form">
-        <SearchableLookup label="Employee" placeholder="Search by employee name or email" items={employees} value={employeeId} onChange={id=>{setEmployeeId(id);setError('');setSuccess('');}} loading={employeeLoading} error={employeeError} onRetry={loadEmployees} emptyMessage={employeeEmpty} required/>
-        <div className="form-two">
-          <SearchableLookup label="Department" placeholder="Search departments…" items={departments} value={departmentId} onChange={id=>{setDepartmentId(id);setGradeId('');setError('');setSuccess('');}} loading={departmentLoading} error={departmentError} onRetry={loadDepartments} emptyMessage={departmentEmpty} required/>
-          <SearchableLookup label="Grade" placeholder={departmentId?'Search grades…':'Select a department first'} items={grades} value={gradeId} onChange={id=>{setGradeId(id);setError('');setSuccess('');}} loading={gradeLoading} error={gradeError} onRetry={()=>loadGrades(departmentId)} disabled={!departmentId} emptyMessage={gradeEmpty} required/>
-        </div>
-        <label>Employment type<select value={type} onChange={e=>setType(e.target.value)} required><option value="BANK">Bank</option><option value="INTERNAL">Internal</option><option value="EXTERNAL">External</option></select></label>
-        <div className="form-hint"><AlertCircle size={16}/><span>Only employees returned by the onboarding-eligible endpoint are selectable. The backend validates compliance, bank details, and department-grade mapping during submission.</span></div>
-        <button className="btn primary" disabled={!canSubmit}>{busy?<><Spinner/> Processing onboarding…</>:<><UserRoundCheck size={16}/> Complete onboarding</>}</button>
-      </form>
-    </section><section className="panel checklist-panel"><PanelTitle title="Before you begin" subtitle="Backend prerequisites"/><div className="checklist">{['Employee email is verified','Overall compliance is approved','All required documents are approved','Bank details are complete','Department and grade are active and correctly mapped'].map((x,i)=><div className="checklist-item" key={x}><span>{i+1}</span><p>{x}</p></div>)}</div><div className="panel-note"><ShieldCheck size={16}/><span>The backend remains authoritative. If any prerequisite is missing, its validation message is shown and onboarding is not marked complete.</span></div></section></div>
-  </>;
 }
 
 createRoot(document.getElementById('root')).render(<App/>);
